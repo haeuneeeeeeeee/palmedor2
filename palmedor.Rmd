@@ -1,0 +1,1187 @@
+---
+title: "Festival de Cannes"
+author: "Defconn"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    fig_caption: yes
+    highlight: textmate
+    theme: spacelab
+    toc: true
+    toc_depth: 2
+    toc_float: true
+    number_sections: true
+    code_folding: hide
+#    runtime: shiny
+editor_options: 
+  markdown: 
+    wrap: 72
+  chunk_output_type: console
+---
+
+<style>
+.list-group-item.active, .list-group-item.active:focus, .list-group-item.active:hover{
+  background-color: #FFCA4B;
+  color : #FF4B80;
+  border-color: gray;
+}
+</style>
+
+------------------------------------------------------------------------
+
+```{r setup, include=FALSE, results = 'hide'}
+knitr::opts_chunk$set(echo = TRUE)
+
+# Set a CRAN mirror
+options(repos = c(CRAN = "https://cran.rstudio.com/"))
+
+```
+
+```{r eval=T, echo=F, message=F, results = 'hide'}
+
+# 패키지 실행하기
+library(readxl)
+library(ggplot2)
+library(dplyr)
+library(plotly)
+library(stringr)
+library(scales)
+library(tidyverse)
+library(RColorBrewer)
+library(magrittr)
+library(purrr)
+library(readr)
+library(config)
+library(gridExtra)
+
+
+# 엑셀 파일 불러오기
+palmedor <- read_excel("palmedorfinal.xlsx")
+jurys <- read_excel("desjurys50ans.xlsx")
+
+# TXT 파일 불러오기
+Synopsis <- "synop.txt"
+
+```
+
+# **목차**
+
+[1) 과제소개]{style="font-size: 20px;"}
+
+[2) 현황 분석]{style="font-size: 20px;"}
+
+[3) 질적 분석 및 데이터 분석 (5가지)]{style="font-size: 20px;"}
+
+[4) 시놉시스 작성 및 예측 결과]{style="font-size: 20px;"}
+
+[5) LLM이 뽑은 시놉시스의 AI 포스터 공개]{style="font-size: 20px;"}
+
+[6) 결론 및 시사점]{style="font-size: 20px;"}
+
+# **과제 소개** {style="font-size: 17px;"}
+
+차갑고 명확한 데이터에 따뜻하고 모호한 인간이 접근한다면 어떨까? 본
+과제는 칸 영화제 황금종려상 수상작 데이터를 통해 **영화계와 사회 전반의 경향을 분석**하고, **시놉시스를 작성**하여 **수상 확률을 예측하는 프로젝트**이다. 매해 가장 가치 있는 영화에게 수여되는 황금종려상 수상작이 갖는 특징의 추이를 통해 <span style="background-color:#FFE6E6">**프랑스 사회 전반의 변화 양상**</span>을 살피는 것을 목적으로 한다.
+
+
+# **현황 분석** {style="font-size: 17px;"}
+
+칸 영화제는 감독과 심사위원단의 경향성, 작품의 특성에 따라 진출과 수상이
+결정된다. **칸영화제에 영향을 주는 요인들을 파악하고 분석**하여 **상관관계를
+이해**하는 것이 중요하다. 이는 영화제의 전반적인 데이터로 파악할 수 있어
+50개년 수상작 감독 60명의 성별, 나이, 국적과 심사위원단 461명의 성별,
+나이, 국적, 직업 데이터를 구글링과 네이버, 위키피디아, 나무위키 사이트
+크롤링을 통해 수집하고 정제해 다양한 형태로 시각화했다. 또, 50개년
+시놉시스 데이터를 수집해 빈출 단어를 분석했다. 2000년을 기준으로
+유의미한 변화 지점을 발견할 수 있어 전체 경향을 간단히 제시 후,
+비교분석으로 넘어간다.
+
+## 50개년 심사위원 성별 (5년 단위) {style="font-size: 17px;"}
+
+```{r Figure 1, eval=T, echo=T, message=F, results = 'hide', r_warning = FALSE}
+
+# 데이터 확인하기
+head(jurys)
+
+# 연도를 5년 단위로 그룹화하여 성별 인원 수 계산
+gender_counts <- jurys %>%
+  mutate(année = as.numeric(année)) %>%
+  mutate(année_group = cut(année, breaks = c(-Inf, seq(1975, 2025, by = 5)), right = FALSE)) %>%
+  group_by(année_group, sexe) %>%
+  summarise(count = sum(n(), na.rm = TRUE))  # na.rm = TRUE를 사용하여 NA 값을 무시
+
+# 2015 이후의 그룹을 2020으로 수정
+levels(gender_counts$année_group)[levels(gender_counts$année_group) == "[2015,2020"] <- "2020"
+
+# 데이터 시각화
+ggplot(gender_counts, aes(x = année_group, y = count, fill = sexe)) +
+  geom_bar(stat = "identity", position = "stack") +
+  geom_text(aes(label = count), vjust = -0.5, size = 3, position = position_stack(0.5)) +
+  labs(title = "Nombre de jurys par sexe",
+       x = "Année",
+       y = "Nombre de personnes",
+       fill = "sexe") +
+  scale_x_discrete(labels = function(x) unique(substring(as.character(x), 2, 5))) +  # 5년 단위의 첫 시작 연도만 표시
+  theme_minimal()
+
+
+```
+
+1975년부터 2024년까지 5년 단위로 성별에 따른 칸영화제 심사위원 인원을 분석한
+결과, 점차 심사위원 내 <span style="background-color:#DCFFE4">**여성의 비율이 꾸준히 증가**</span>하고 있음을 발견할 수 있다.
+
+------------------------------------------------------------------------
+
+## 2017 \~ 2024 심사위원 성별  {style="font-size: 17px;"}
+
+```{r Figure 2, eval=T, echo=T, message=F, results = 'hide'}
+
+# 연도별 성별 인원 수 계산
+gender_counts <- jurys %>%
+  mutate(année = as.numeric(année)) %>%
+  group_by(année, sexe) %>%
+  summarise(count = n())
+
+# 2017년 이후의 데이터만 사용
+gender_counts <- filter(gender_counts, année >= 2017)
+
+# 데이터 시각화
+ggplot(gender_counts, aes(x = as.factor(année), y = count, fill = sexe)) +
+  geom_bar(stat = "identity") +
+  geom_text(aes(label = count), vjust = -0.5, size = 3, position = position_stack(0.5)) +
+  labs(title = "Nombre de jurys par sexe (2017~2024)",
+       x = "Année",
+       y = " ",
+       fill = "sexe")+
+  theme_minimal()
+
+```
+
+특히 하비 와인스타인으로부터 촉발된 미투 (#metoo) 운동이 전개된
+2017년부터의 성별에 따른 심사위원 인원을 확인한 결과, <span style="background-color:#DCFFE4">**여성과 남성의 비율이 거의 동등**</span>해지고 있음을 알 수 있다.
+
+------------------------------------------------------------------------
+
+## 50개년 심사위원 / 수상 감독 나이  {style="font-size: 17px;"}
+
+```{r Figure 3, eval=T, echo=T, message=F,results = 'hide', r_warning=FALSE}
+
+# 데이터 확인하기
+head(jurys)
+head(palmedor)
+
+# 감독 데이터 프레임에서 나이 추출
+palmedor_âge <- palmedor %>% 
+  select(âge) %>% 
+  rename(Âge = âge)
+
+# 심사위원 데이터 프레임에서 나이 추출
+jurys_âge <- jurys %>% 
+  select(âge) %>% 
+  rename(Âge = âge)
+
+# Âge 열을 숫자형으로 변환하면서 NA 값 처리
+jurys_âge <- jurys_âge %>%
+  mutate(Âge = as.numeric(Âge)) %>%
+  filter(!is.na(Âge))
+
+# 각 데이터에 대한 'Type' 열 추가
+palmedor_âge <- palmedor_âge %>% mutate(Type = 'Réalisateur')
+jurys_âge <- jurys_âge %>% mutate(Type = 'Jury')
+
+# 두 데이터 프레임 병합
+combined_data <- bind_rows(palmedor_âge, jurys_âge)
+
+# 두 데이터 유형의 평균 나이 계산
+mean_age_jurys <- mean(jurys_âge$Âge, na.rm  = TRUE)
+mean_age_palmedor <- mean(palmedor_âge$Âge, na.rm = TRUE)
+
+# 시계열 그래프 그리기
+ggplot(combined_data, aes(x = Âge, fill = Type)) +
+  geom_density(alpha = 0.5, color = "black") + # 밀도 그래프의 선 색상을 지정합니다.
+  geom_segment(aes(x = mean_age_jurys - 2.5, xend = mean_age_jurys - 2.5, y = 0, yend = 0.04, color = "Jury"), linetype = "solid", linewidth = 2) + # Jury 선 위치 조정
+  geom_segment(aes(x = mean_age_palmedor + 2.5, xend = mean_age_palmedor + 2.5, y = 0, yend = 0.04, color = "Réalisateur"), linetype = "solid", linewidth = 2) + # palmedor 선 위치 조정
+  geom_text(aes(x = mean_age_jurys - 2.5, label = paste(round(mean_age_jurys, 1)), y = 0.035),
+            vjust = -0.3, hjust = -1.3, size = 5, fontface = "bold", color = "olivedrab4") +  # 첫 번째 평균 나이 텍스트 추가
+  geom_text(aes(x = mean_age_palmedor + 3, label = paste(round(mean_age_palmedor, 1)), y = 0.035),
+            vjust = -2.0, hjust = 2.2, size = 5, fontface = "bold", color = "steelblue3") +  # 두 번째 평균 나이 텍스트 추가
+  labs(title = "Âge des jurys et des réalisateurs",
+       x = "Âge",
+       y = "Densité") +
+  scale_x_continuous(breaks = seq(20, 90, by = 10)) +  # x축 눈금을 10단위로 설정
+  scale_fill_manual(name = "Âge", values = c("Jury" = "steelblue2", "Réalisateur" = "olivedrab1")) +  # 채우기 색상을 지정합니다.
+  scale_color_manual(name = "Âge moyen", values = c("Jury" = "steelblue3", "Réalisateur" = "olivedrab4")) + # 선 색상을 지정합니다.
+  theme_minimal() +
+  guides(color = guide_legend(override.aes = list(linetype = "solid", linewidth = 2)))  # 크기 지정 방식 변경
+
+
+```
+
+50개년 심사위원과 황금종려상 수상 감독의 나이 분포는 <span style="background-color:#DCFFE4">**평균 4-50대**</span>로
+이루어져있다.
+
+------------------------------------------------------------------------
+
+## 50개년 수상감독 국적  {style="font-size: 17px;"}
+
+```{r Figure 4, eval=T, echo=T, message=F, results = 'hide'}
+# 국적 데이터 전처리: 쉼표로 분리된 단어들을 각각 하나의 데이터로 취급하고 앞뒤 공백 제거
+nationalité_list <- strsplit(palmedor$nationalité, ",")
+nationalité_df <- data.frame(nationalité = trimws(unlist(nationalité_list)))
+
+# 빈도수 계산
+nationalité_counts <- count(nationalité_df, nationalité)
+
+# 데이터 개수가 가장 많은 순서대로 정렬
+nationalité_counts <- arrange(nationalité_counts, desc(n))
+
+# 그래프 생성 (x와 y축이 바뀜)
+ggplot(nationalité_counts, aes(x = n, y = reorder(nationalité, n), fill = n)) +
+  geom_bar(stat = "identity", color = "black") +
+  geom_text(aes(label = n), hjust = -0.2, size = 3.5, color = "black") + # 막대 옆에 데이터 개수 표시
+  labs(title = "Graphique des réalisateurs par nationalité", x = " ", y = "nationalité") +
+  scale_fill_gradient(low = "lightblue", high = "blue", trans = "log", breaks = pretty_breaks(n = 5)) + # 색상 진하기 조절
+  theme_minimal() +
+  theme(axis.text.y = element_text(angle = 0, hjust = 1)) +  # y축 라벨 회전
+  scale_x_continuous(breaks = seq(0, max(nationalité_counts$n), by = 3))
+
+
+```
+
+50개년 황금종려상 수상 감독의 출신 국가는 <span style="background-color:#DCFFE4">**미국**</span>과 <span style="background-color:#DCFFE4">**프랑스**</span>가 대다수이다.
+
+------------------------------------------------------------------------
+
+## 50개년 심사위원 직업 {style="font-size: 17px;"}
+
+```{r Figure 5, eval=T, echo=T, message=F, results = 'assis'}
+
+# 직업 이름 설정
+métier_names <- names(jurys)[7:81]
+
+# 직업 빈도수를 계산할 벡터 초기화
+métier_counts <- integer(length(métier_names))
+
+# 각 직업의 빈도수를 계산
+for (i in seq_along(métier_names)) {
+  métier_counts[i] <- sum(jurys[[métier_names[i]]] == 1, na.rm = TRUE)
+}
+
+# 데이터프레임 생성
+métier_data <- data.frame(métier = métier_names, count = métier_counts)
+
+# 상위 10개 직업 추출
+top_métiers <- métier_data %>%
+  slice_max(order_by = count, n = 10)
+
+# 나머지 직업들의 빈도 합산
+autre_freq <- sum(métier_data$count) - sum(top_métiers$count)
+
+# "autre" 항목 추가
+autre_métiers <- data.frame(métier = "autre", count = autre_freq)
+
+# 상위 10개 직업과 "autre"를 합침
+final_métier_data <- bind_rows(top_métiers, autre_métiers)
+
+# 레이블 텍스트 생성
+labels <- paste(final_métier_data$métier, "(", round(final_métier_data$count / sum(final_métier_data$count) * 100, 1), "%)", sep = "")
+
+# 파이차트 생성
+pie_chart <- plot_ly(
+  final_métier_data, 
+  labels = ~métier, 
+  values = ~count, 
+  type = 'pie',
+  textinfo = 'text',
+  text = labels,
+  hovertemplate = paste('%{label}<br>',
+                        'Fréquence : %{value}<br>',
+                        'Proportion : %{percent:.1%}<extra></extra>')  # 커스텀 툴팁 설정
+)
+
+# 파이차트 색상 설정
+colors <- c("#FFDAB9", "#ADD8E6", "#D1F2A5", "#87CEFA", "#98FB98", "#FFB6C1", 
+            "#B0E0E6", "#FFDEAD", "#87CEEB", "#FFC0CB", "#E6EE9C", "#87CEFA")
+
+# 파이차트 레이아웃 설정 및 출력
+pie_chart <- pie_chart %>% layout(
+  title = list(text = "Métiers des jurys", x = 0.3, y = 0.98),
+  plot_bgcolor = "white",  # 배경색을 흰색으로 설정
+  paper_bgcolor = "white",  # 종이 배경색을 흰색으로 설정
+  colorway = colors,  # 파이차트의 색상 설정
+  showlegend = TRUE,  # 범례 표시
+  legend = list(
+    x = 1.3,  # 범례의 x 좌표 조정
+    y = 0.98   # 범례의 y 좌표 조정
+  )
+)
+
+# 파이차트 출력
+pie_chart
+
+
+```
+
+50개년 심사위원의 직업을 파이차트를 통해 보면 <span style="background-color:#DCFFE4">영화 감독, 배우, 시나리오
+작가, 프로듀서 등 **예술과 관련된 직업**</span>의 비율이 대다수를 차지하고 있다.
+
+------------------------------------------------------------------------
+
+## 50개년 시놉시스 빈출 상위 10개 단어 비율 {style="font-size: 17px;"}
+
+```{r Figure 6, eval=T, echo=T, message=F, results = 'assis'}
+# 텍스트 파일 읽기
+text <- tolower(readLines(Synopsis, warn = FALSE))
+
+# 텍스트 데이터를 단어로 분할하고 전처리하기
+word_data <- str_split(text, "\\s+") %>% 
+  unlist() %>% 
+  tolower() %>% 
+  str_replace_all("[[:punct:]]", "") %>%
+  discard(~ str_detect(., "^\\d+$")) %>%
+  discard(~ str_detect(., "^\\s*$"))
+
+# 필터링할 단어들 설정 (exclude_words에 포함된 단어를 제외하고, "histoire"를 포함하여 추출)
+exclude_words <- c("depuis", "années", "petite", "daniel", "contre", "accepte", "autres", "barton")
+include_words <- c("histoire", "vie", "mort")
+
+# 6글자 이상인 단어 중에서 필터링할 단어들을 제외한 단어 추출
+word_data_filtered <- word_data[str_length(word_data) >= 6 & !(word_data %in% exclude_words) | (word_data %in% include_words)]
+
+# "lhistoire"를 "histoire"로 수정
+word_data_filtered <- str_replace_all(word_data_filtered, "lhistoire", "histoire")
+
+# 단어 빈도 계산하기
+word_freq <- table(word_data_filtered)
+
+# 상위 15개 단어 추출
+top_words <- head(sort(word_freq, decreasing = TRUE), 10)
+
+# 데이터 프레임으로 변환
+df_top_words <- data.frame(word = names(top_words), freq = as.numeric(top_words), stringsAsFactors = FALSE)
+
+# 백분율 계산
+df_top_words$percent <- ifelse(df_top_words$freq != 0, prop.table(df_top_words$freq) * 100, 0)
+
+# 항목 이름과 퍼센트를 병합한 문자열 생성
+label_text <- paste(df_top_words$word, "(", round(df_top_words$percent, 1), "%)")
+
+# 예쁜 파스텔톤 색상 팔레트 정의
+pastel_colors <- c("#FFD1DC", "#FFA07A", "#FF7F50", "#FFB6C1", "#FF69B4", "#FFC0CB", "#87CEEB", "#ADD8E6", "#AFEEEE", "#B0E0E6")
+
+# 파이차트 생성
+pie_chart <- plot_ly(
+  labels = label_text,
+  values = df_top_words$freq,
+  type = "pie",
+  text = label_text,  # 툴팁에 표시될 텍스트 설정
+  textposition = "inside",
+  textinfo = "text",
+  marker = list(colors = pastel_colors),  # 파스텔톤 색상 팔레트 적용
+  hovertemplate = paste('%{label}<br>',
+                        'Fréquence : %{value}<extra></extra>')  # 커스텀 툴팁 설정
+) %>% 
+  layout(
+    title = list(text = "Top 10 Mots par Fréquence", x = 0.5),  # 제목 위치 조정
+    margin = list(t = 100)  # 위 여백 추가
+  ) %>% 
+  config(displayModeBar = FALSE)  # Plotly의 모드바 숨기기
+
+# 파이차트 출력
+pie_chart
+
+```
+
+50개년 황금종려상 수상작들의 시놉시스를 프랑스어로 수집하고 그 중
+빈출단어 10개를 뽑아 분석한 결과,<span style="background-color:#DCFFE4">**vie, famille, enfants, couple** 등의
+**가족적 명사**</span>와 <span style="background-color:#DCFFE4">**mort, guerre** 등 죽음, 전쟁 등의 **갈등 관련 명사**</span>가 높은 비율로 추출되었다.
+
+------------------------------------------------------------------------
+
+## 50개년 수상작 장르 {style="font-size: 17px;"}
+
+```{r Figure 7, eval=T, echo=T, message=F, results = 'assis'}
+
+# 장르 합계 계산
+genre <- NULL 
+for (i in 8:23) {
+  genre <- c(genre, sum(palmedor[, i]))
+}
+
+# 장르 이름 설정 (데이터에 맞게 수정 필요)
+genre_names <- names(palmedor)[8:23]
+
+# 장르 데이터프레임 생성
+genre_data <- data.frame(
+  Genre = genre_names,
+  Count = genre
+)
+
+# 비율 계산
+genre_data <- genre_data %>%
+  mutate(Proportion = Count / sum(Count))
+
+# 최대 값을 가진 인덱스 찾기
+max_index <- which.max(genre_data$Count)
+
+# 각 항목에 대해 레이블을 표시할지 여부를 지정
+labels <- ifelse(seq_along(genre_data$Count) == max_index, 
+                 paste(genre_data$Genre, "(", round(genre_data$Count / sum(genre_data$Count) * 100, 1), "%)", sep = ""), 
+                 paste(round(genre_data$Count / sum(genre_data$Count) * 100, 2), "%"))
+
+# 초록 계열 색상 수동 지정
+green_palette <- c("#98FB98", "#3CB371", "#2ca02c", "#229954", "#3d9970", "#2ecc71", "#556B2F", "#1b9e77", 
+                   "#F0E68C", "#20B2AA", "#11806a", "#48c9b0", "#28b463", "#76d7c4", "#019875", "#82e0aa")
+
+# 파이 차트 생성
+fig <- plot_ly(
+  genre_data, 
+  labels = ~Genre, 
+  values = ~Count, 
+  type = 'pie',
+  textinfo = 'text',
+  text = labels,
+  marker = list(colors = green_palette),
+  hovertemplate = paste('%{label}<br>',
+                        'Fréquence : %{value}<br>',
+                        'Porportion : %{percent:.1%}<extra></extra>')  # 커스텀 툴팁 설정
+) %>%
+  layout(
+    title = 'Pie chart des genres',
+    margin = list(t = 50)  
+  )
+
+# 파이 차트 출력
+fig
+
+```
+
+50개년 황금종려상 수상작의 장르 비율을 분석한 결과, <span style="background-color:#DCFFE4">**드라마 장르**</span>가 과반수 이상으로 압도적인 비율을 차지하고 있음을 볼 수 있다.
+
+------------------------------------------------------------------------
+
+# **질적 분석 및 데이터 분석**
+
+이제 2000년을 전후로 변화에 초점을 맞추어 비교분석한 결과이다. 아래 밀도 플롯에서 나타나듯이, 수상 감독의 나이 뿐만 아니라 다양한 요소들이 2000년도를 기준으로 유의미한 변화를 보여주고 있다.
+
+
+
+```{r Figure 8, eval=T, echo=T, message=F, results = 'hide'}
+library(ggplot2)
+
+# 데이터프레임 생성
+df <- as.data.frame(palmedor)
+
+# 2000년 이전과 이후로 데이터 분리
+df$cohort <- ifelse(df$Année < 2000, "Avant 2000", "Après 2000")
+
+# 2000년 전후 각각의 평균 나이 계산
+mean_avant_2000 <- mean(df$âge[df$cohort == "Avant 2000"], na.rm = TRUE)
+mean_apres_2000 <- mean(df$âge[df$cohort == "Après 2000"], na.rm = TRUE)
+
+# density plot 시각화
+p <- ggplot(df, aes(x = âge, fill = cohort)) +
+  geom_density(alpha = 0.5) +
+  labs(title = "Répartition de l'âge des réalisateurs avant et après 2000",
+       x = "Âge",
+       y = "Density") +
+  scale_fill_manual(name = "Âge", values = c("Avant 2000" = "#C8A2C8", "Après 2000" = "#FFDAB9")) +
+  theme_minimal() +
+  theme(plot.title = element_text(size = 10)) +
+  geom_text(aes(x = mean_avant_2000, y = 0.03, label = round(mean_avant_2000, 1)),
+            color = "#B96FB9", vjust = -6, hjust = 0, size = 5) +
+  geom_text(aes(x = mean_apres_2000, y = 0.03, label = round(mean_apres_2000, 1)),
+            color = "#FFA07A", vjust = 0, hjust = 0.1, size = 5) +
+  guides(fill = guide_legend(override.aes = list(color = NA)))
+
+# 그래프 출력
+print(p)
+
+```
+
+## 여성 영화와 페미니즘의 대두
+
+### 2000 전후 수상감독 성비
+
+올해 개최된 77번째 칸 영화제에서는 <span style="color:blue">**여성의 입지가 이전보다 더 확장**</span>되었다. 칸 영화제의 페미니즘 증진과 관련된 2017년 미투 사건과 2018년 칸의 여성 영화인 항의 사건, 이에 대한 티에리 프레모 집행위원장의 성명서 발표가 여성 성비의 증가(수상 감독, 심사위원)에 실제로 영향을 미쳤는지 확인하기 위해 데이터를 비교분석 해보았다.
+
+```{r Figure 9, eval=T, echo=T, message=F, results = 'hide'}
+
+# 데이터 프레임 생성
+sexedesréalisateurs <- as.data.frame(palmedor)
+
+# 연도에 따라 데이터 분리
+finalreceiveM3_df_2000down <- subset(sexedesréalisateurs, Année < 2000)
+finalreceiveM3_df_2000up <- subset(sexedesréalisateurs, Année >= 2000)
+
+# 데이터 통합
+df3_2000down_info <- data.frame(cohort3 = rep("Avant 2000", nrow(finalreceiveM3_df_2000down)), 
+                                sexe = finalreceiveM3_df_2000down$sexe)
+df3_2000up_info <- data.frame(cohort3 = rep("Après 2000", nrow(finalreceiveM3_df_2000up)), 
+                              sexe = finalreceiveM3_df_2000up$sexe)
+
+total_df_2000 <- bind_rows(df3_2000down_info, df3_2000up_info) %>%
+  mutate(cohort3 = factor(cohort3, levels = c("Avant 2000", "Après 2000")))
+
+# 각 cohort3와 sexe 조합의 비율 계산
+total_df_2000_summary <- total_df_2000 %>%
+  group_by(cohort3, sexe) %>%
+  summarise(count = n(), .groups = 'drop') %>%
+  group_by(cohort3) %>%
+  mutate(total = sum(count), ratio = count / total) %>%
+  ungroup()
+
+# 비율 표시를 위한 텍스트 위치 계산
+total_df_2000_summary <- total_df_2000_summary %>%
+  group_by(cohort3) %>%
+  mutate(pos = cumsum(ratio) - 0.5 * ratio) %>%
+  ungroup()
+
+
+# 그래프 그리기 
+graphedesexe <- ggplot(total_df_2000_summary, aes(x = cohort3, y = ratio, fill = sexe)) +
+  geom_bar(stat = "identity", position = "fill") +
+  geom_text(aes(label = scales::percent(ratio), y = ratio), position = position_fill(vjust = 0.5), color = "white", size = 4) +
+  labs(title = "Sexe ratio avant et après 2000 des réalisateurs",
+       x = "Cohort",
+       y = "Ratio",
+       fill = "Sexe") +
+  scale_fill_manual(values = c("M" = "green", "F" = "orange")) + # 원하는 색상으로 변경
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5))
+
+graphedesexe
+
+```
+
+50개년 칸 영화제 황금종려상 수상 감독들의 성비를 2000년을 기준으로 하여
+데이터를 통해 분석한 결과, <span style="background-color:#fff5b1">**여성 감독의 수상 비율이 3%에서 8.7%로 증가했음**</span>을 확인했다.
+
+### 2000년 전후 심사위원 성비
+
+```{r Figure 10, eval=T, echo=T, message=F, results = 'hide'}
+
+finaldesjurys_df <- as.data.frame(jurys); finaldesjurys_df
+summary(finaldesjurys_df)
+
+# 직업 합계 계산
+métier <- NULL 
+for (i in 7:81) {
+  métier <- c(métier, sum(jurys[, i]))
+}
+
+# 직업 이름 설정 (데이터에 맞게 수정 필요)
+métier_names <- names(jurys)[7:81]
+
+# 직업 데이터프레임 생성
+métier_data <- data.frame(
+  Métier = métier_names,
+  Count = métier
+)
+
+#2000년 전
+finaldesjurys_df_2000down <- subset(finaldesjurys_df, année < 2000)
+finaldesjurys_df_2000down_count <- NULL
+for (i in 7:81){
+  finaldesjurys_df_2000down_count <- c(finaldesjurys_df_2000down_count, sum(finaldesjurys_df_2000down[i]))
+}
+
+df3_2000down <- data.frame(métier = métier, countN = finaldesjurys_df_2000down_count); df3_2000down
+
+#2000년 후
+finaldesjurys_df_2000up <- subset(finaldesjurys_df, année >= 2000)
+finaldesjurys_df_2000up_count <- NULL
+for (i in 7:81){
+  finaldesjurys_df_2000up_count <- c(finaldesjurys_df_2000up_count, sum(finaldesjurys_df_2000up[i]))
+}
+
+df3_2000up <- data.frame(métier = métier, countN = finaldesjurys_df_2000up_count); df3_2000up
+
+# 데이터 통합
+df3_2000down_info <- data.frame(cohort3 = rep("Avant 2000", nrow(finaldesjurys_df_2000down)), année = finaldesjurys_df_2000down$année, nom = finaldesjurys_df_2000down$nom, sexe = finaldesjurys_df_2000down$sexe, âge = finaldesjurys_df_2000down$âge, nationalité = finaldesjurys_df_2000down$nationalité, métier = finaldesjurys_df_2000down$métier) ; df3_2000down_info
+df3_2000up_info <- data.frame(cohort3 = rep("Après 2000", nrow(finaldesjurys_df_2000up)), année = finaldesjurys_df_2000up$année, nom = finaldesjurys_df_2000up$nom, sexe = finaldesjurys_df_2000up$sexe, âge = finaldesjurys_df_2000up$âge, nationalité = finaldesjurys_df_2000up$nationalité,métier = finaldesjurys_df_2000up$métier) ; df3_2000up_info
+total_df_2000 <- bind_rows(df3_2000down_info, df3_2000up_info) %>%
+  mutate(cohort3 = factor(cohort3, levels = c("Avant 2000", "Après 2000")))
+
+# 각 cohort3와 sexe 조합의 비율 계산
+total_df_2000_summary <- total_df_2000 %>%
+  group_by(cohort3, sexe) %>%
+  summarise(count = n()) %>%
+  mutate(ratio = count / sum(count))
+
+# 비율 표시를 위한 텍스트 위치 계산
+total_df_2000_summary <- total_df_2000_summary %>%
+  group_by(cohort3) %>%
+  mutate(pos = cumsum(ratio) - 0.5 * ratio)
+
+# 그래프 그리기
+graphedesexe <- ggplot(total_df_2000_summary, aes(x = cohort3, y = ratio, fill = sexe)) +
+  geom_bar(stat = "identity", position = "fill") +
+  geom_text(aes(label = scales::percent(ratio), y = pos), position = position_fill(vjust = 0.3), color = "white", size = 4) +
+  labs(title = "Sexe ratio des jurys avant et après 2000",
+       x = "Cohort",
+       y = "Ratio",
+       fill = "Sexe") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5))
+
+graphedesexe
+
+```
+
+심사위원단 성비를 시각화한 누적 막대차트를 통해 <span style="background-color:#fff5b1">**실제 2000년 이후 동석에 가까운 수치로 성평등화가 진행되었음**</span>을 확 인했다.
+
+------------------------------------------------------------------------
+
+## 수상 감독의 평균 나이 증가
+
+황금종려상 수상 감독들이 과거에 비해 더 늦은 나이까지 원활한 작품 활동을
+하고 있으며 영화계에서 수상하는 경향을 보이고 있다. 앞서 확인했듯 칸
+영화제에서 영화제에서 황금종려상을 가장 많이 수여받는 프랑스인과
+미국인의 <span style="color:blue">**기대수명이 증가**</span>했다. 특히 2000년대 이후로 수상 비중이 훨씬 높아진 프랑스인들의 기대수명이 미국보다 조금 더 큰 폭으로 증가하여 감독들이 이전보다 <span style="color:blue">**상대적으로 고령의 나이에도 작품활동을 소화**</span>할 수 있게 되었다.
+
+### 2000년 전후 수상 감독 나이 변화 & 평균
+
+```{r Figure 11, eval=T, echo=T, message=F, results = 'hide'}
+
+# 데이터프레임 생성
+df <- as.data.frame(palmedor)
+
+# 2000년 이전과 이후로 데이터 분리
+df$cohort <- ifelse(df$Année < 2000, "Avant 2000", "Après 2000")
+
+# 평균 나이 계산
+mean_age <- df %>%
+  group_by(cohort) %>%
+  summarize(mean_age = mean(âge),
+            Année = mean(Année))  # Année 열 추가
+
+# 산점도 시각화
+p <- ggplot(df, aes(x = âge, y = Année, color = cohort)) +
+  geom_point(alpha = 1.5, size = 3) +
+  labs(title = "Répartition de l'âge des réalisateurs avant et après 2000",
+       x = "Âge",
+       y = "Année") +
+  scale_color_manual(values = c("Avant 2000" = "#C8A2C8", "Après 2000" = "#FFDAB9")) +
+  theme_minimal() +
+  theme(plot.title = element_text(size = 10)) +
+  geom_text(data = mean_age, aes(x = mean_age, y = Année, label = round(mean_age), group = cohort),
+            vjust = -0.5, color = "black", size = 6)
+
+# 그래프 출력
+print(p)
+```
+
+산점도 매트릭스로 데이터를 시각화해본 결과, <span style="background-color:#fff5b1">**2000년 이후로 황금종려상
+수상 감독의 평균나이가 46세에서 54세로 증가했음**</span>을 확인할 수 있다.
+
+------------------------------------------------------------------------
+
+## 황금종려상 수상작 장르의 다양화
+
+칸 영화제는 <span style="color:blue">**영화의 예술성**</span>에 중점을 두는 경향이 있다. 따라서 탄탄한 스토리텔링과 풍부한 감정 묘사가 특징인 <span style="color:blue">**드라마 장르**</span>가 여전히 황금종려상 수상에 유리하다. 칸 영화제는 이전부터 <span style="color:blue">**다양성 증진**</span>에 대해 어느정도 의식하고 있었으며, 최근에는 성별, 소재, 장르 등 광범위한 분야에서 그를 이루기 위해 노력하고 있다.
+
+### 2000년 전후 장르 막대그래프
+
+```{r Figure 12, eval=T, echo=T, message=F, results = 'hide'}
+
+# 데이터프레임 생성
+genre2000cohort <- as.data.frame(palmedor)
+
+# 장르 정의
+genre <- c("Drame", "Comédie", "Policier", "Historique", "Guerre", "Documentaire", "Romance", "Thriller", "Horreur", "Les.autres")
+
+# 2000년 이후 데이터 추출
+genre2000cohort_2000up <- subset(genre2000cohort, Année >= 2000)
+
+# 2000년 이후 장르별 빈도 계산
+genre2000cohort_2000up_count <- NULL
+for (i in 8:16) {
+  genre2000cohort_2000up_count <- c(genre2000cohort_2000up_count, sum(genre2000cohort_2000up[, i]))
+}
+
+# 'Les.autres' 장르의 빈도 계산하여 추가
+les_autres_2000up <- sum(genre2000cohort_2000up$Judiciaire, genre2000cohort_2000up$Fantastique, 
+                         genre2000cohort_2000up$Musicale, genre2000cohort_2000up$Aventure, 
+                         genre2000cohort_2000up$Espionnage, genre2000cohort_2000up$Biopic, 
+                         genre2000cohort_2000up$`Comédie musicale`)
+genre2000cohort_2000up_count <- c(genre2000cohort_2000up_count, les_autres_2000up)
+
+# 2000년 이후 데이터프레임 생성
+df_2000up <- data.frame(genre = genre, countN = genre2000cohort_2000up_count, cohort = "2000up")
+
+# 2000년 이전 데이터 추출
+genre2000cohort_2000down <- subset(genre2000cohort, Année < 2000)
+
+# 2000년 이전 장르별 빈도 계산
+genre2000cohort_2000down_count <- NULL
+for (i in 8:16) {
+  genre2000cohort_2000down_count <- c(genre2000cohort_2000down_count, sum(genre2000cohort_2000down[, i]))
+}
+
+# 'Les.autres' 장르의 빈도 계산하여 추가
+les_autres_2000down <- sum(genre2000cohort_2000down$Judiciaire, genre2000cohort_2000down$Fantastique, 
+                           genre2000cohort_2000down$Musicale, genre2000cohort_2000down$Aventure, 
+                           genre2000cohort_2000down$Espionnage, genre2000cohort_2000down$Biopic, 
+                           genre2000cohort_2000down$`Comédie musicale`)
+genre2000cohort_2000down_count <- c(genre2000cohort_2000down_count, les_autres_2000down)
+
+# 2000년 이전 데이터프레임 생성
+df_2000down <- data.frame(genre = genre, countN = genre2000cohort_2000down_count, cohort = "2000down")
+
+# 데이터 결합
+totalDF_updown <- rbind(df_2000up, df_2000down)
+
+# 비율 계산
+totalDF_updown <- totalDF_updown %>%
+  group_by(cohort) %>%
+  mutate(total_count = sum(countN)) %>%
+  mutate(proportion = countN / total_count) %>%
+  ungroup()
+
+# 그래프 생성
+p <- ggplot(data = totalDF_updown, mapping = aes(x = genre, y = proportion, fill = cohort)) +
+  geom_col(position = "dodge", color = "black") +
+  scale_fill_manual(values = c("2000up" = "#FF66B2", "2000down" = "#7CFC00")) + # 색상 설정
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, margin = margin(t = 0.5, r = 0, b = 0, l = 0)),
+        axis.text.y = element_text(margin = margin(t = 0, r = 0.5, b = 0, l = 0))) + # 간격 조정
+  geom_text(aes(label = scales::number(proportion * 100, accuracy = 0.1)), 
+            position = position_dodge(width = 0.9), vjust = -0.5, color = "black", size = 2.5) + # 텍스트 크기 조정
+  ggtitle("Genre ratio du palme d'or avant et après 2000") # 제목 추가
+
+# 그래프 출력
+print(p)
+```
+
+<span style="background-color:#fff5b1">2000년 전후로 **여전히 드라마가 과반수 이상**</span>의 압도적인 비율을 차지하고있다. 또 <span style="background-color:#fff5b1">**로맨스 장르가 6.8 % 에서 2.5 %로 급락**했음</span>을 알 수 있다. 이는 성소수자, 반이성애와 관련해 **다양성 확보**의 목적으로 <span style="background-color:#E6E6FA">**퀴어종려상을 별개로 신설**</span> 해 상대적으로 로맨스 장르의 황금종려상 수상 비중이 낮아진 것을 의미한다.
+
+------------------------------------------------------------------------
+
+## 심사위원 구성의 다양화
+
+올해 개최된 77번째 칸영화제의 심사위원 중 한 명으로 아프리카 출신 부모를 둔 유색 인종의 배우를 선정했다. 또한 제 72회 칸 영화제에서는 배우 엘르 패닝이 21살의 나이로 최연소 칸 영화제 심사위원으로 발탁되었다. 이를 통해 칸 영화제는 <span style="color:blue">**인종, 나이, 직업의 차원에서 점차 다양성을 추구한다는 점**</span>을 확인할 수 있다.
+
+### 2000년 전후 직업 막대그래프
+
+```{r Figure 13, eval=T, echo=T, message=F, results = 'hide'}
+
+finaljurys_df <- as.data.frame(jurys)
+métier <- names(finaljurys_df)[7:81]
+
+# 2000 이후와 이전으로 데이터 분리
+finaljurys_df_2000up <- finaljurys_df[finaljurys_df$année >= 2000, ]
+finaljurys_df_2000down <- finaljurys_df[finaljurys_df$année < 2000, ]
+
+# 각 기간별 항목별 총계 계산
+count_métier <- function(df) {
+  colSums(df[, 7:81], na.rm = TRUE)
+}
+
+df3_2000up <- data.frame(métier = métier, countN = count_métier(finaljurys_df_2000up))
+df3_2000down <- data.frame(métier = métier, countN = count_métier(finaljurys_df_2000down))
+
+# 각 데이터프레임에서 상위 9개 항목 추출
+top_9_df1 <- head(arrange(df3_2000up, desc(countN)), 9)
+top_9_df2 <- head(arrange(df3_2000down, desc(countN)), 9)
+
+# 공통 항목 추출
+common_métiers <- intersect(top_9_df1$métier, top_9_df2$métier)
+
+# 공통 항목만 추출
+top_9_common_df1 <- filter(top_9_df1, métier %in% common_métiers)
+top_9_common_df2 <- filter(top_9_df2, métier %in% common_métiers)
+
+# 공통 항목을 포함한 데이터프레임 결합
+total_df_2000 <- bind_rows(
+  mutate(top_9_common_df1, cohort = "Après 2000"),
+  mutate(top_9_common_df2, cohort = "Avant 2000")
+)
+
+# 그래프 생성
+ggplot() +
+  geom_bar(data = top_9_df2, aes(x = reorder(métier, countN), y = countN, fill = "Avant 2000"), stat = "identity", color = "black") +
+  geom_text(data = top_9_df2, aes(x = reorder(métier, countN), y = countN, label = countN), vjust = -0.5, size = 3.5) +
+  geom_bar(data = top_9_df1, aes(x = reorder(métier, countN), y = countN, fill = "Après 2000"), stat = "identity", color = "black") +
+  geom_text(data = top_9_df1, aes(x = reorder(métier, countN), y = countN, label = countN), vjust = -0.5, size = 3.5) + 
+  geom_bar(data = total_df_2000, aes(x = reorder(métier, countN), y = countN, fill = cohort), stat = "identity", color = "black") +
+  geom_text(data = total_df_2000[total_df_2000$cohort == "Après 2000", ], aes(x = reorder(métier, countN), y = countN, label = countN), vjust = -8.85,  size = 3.5) +
+  geom_text(data = total_df_2000[total_df_2000$cohort == "Avant 2000", ], aes(x = reorder(métier, countN), y = countN, label = countN), vjust = 5.5 ,  size = 3.5) +
+  labs(x = "Métier", y = " ", title = "Top 9 Métiers des jurys avant et après 2000") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) + 
+  scale_fill_manual(name = "Année", 
+                    values = c("Après 2000" = "yellowgreen", "Avant 2000" = "lightcoral", "common" = "gray")) +
+  guides(fill = guide_legend(title = "Année")) +
+  facet_wrap(~" ", nrow = 1, scales = "free_y")
+
+
+```
+
+위 그래프는 심사위원의 직업을 2000년 전후로 비교한 그래프이다. 2000년
+이전의 정통 영화 관련 직업에서 <span style="background-color:#fff5b1">2000년 이후 사진작가, 작곡가, 모델, 가수
+등 **전반적인 예술 관련 직업으로 그 범위가 확장**됨</span>을 알 수 있다.
+
+### 2000년 전후 심사위원 나이 히스토그램 & 상자 수염 그림 
+
+```{r Figure 14, eval=T, echo=T, message=F, results = 'hide'}
+
+# 데이터 필터링 예제 (2000년 이전 및 이후 데이터 필터링)
+finaljurys_df_2000down <- subset(jurys, année < 2000)
+finaljurys_df_2000up <- subset(jurys, année >= 2000)
+
+# 데이터 프레임 생성
+df3_2000down_info <- data.frame(
+  cohort3 = rep("Avant 2000", nrow(finaljurys_df_2000down)),
+  année = finaljurys_df_2000down$année,
+  nom = finaljurys_df_2000down$nom,
+  sexe = finaljurys_df_2000down$sexe,
+  âge = finaljurys_df_2000down$âge,
+  nationalité = finaljurys_df_2000down$nationalité,
+  métier = finaljurys_df_2000down$métier
+)
+
+df3_2000up_info <- data.frame(
+  cohort3 = rep("Après 2000", nrow(finaljurys_df_2000up)),
+  année = finaljurys_df_2000up$année,
+  nom = finaljurys_df_2000up$nom,
+  sexe = finaljurys_df_2000up$sexe,
+  âge = finaljurys_df_2000up$âge,
+  nationalité = finaljurys_df_2000up$nationalité,
+  métier = finaljurys_df_2000up$métier
+)
+
+# 두 데이터 프레임 합치기
+combined_info <- rbind(df3_2000down_info, df3_2000up_info)
+
+# 평균 값 계산
+mean_values <- combined_info %>%
+  group_by(cohort3) %>%
+  summarise(mean_age = mean(âge, na.rm = TRUE))
+
+# 히스토그램
+histogram_plot <- ggplot(combined_info, aes(x = âge, fill = cohort3)) +
+  geom_histogram(binwidth = 5, position = "identity", alpha = 0.5) +
+  labs(title = "", x = "Âge", y = "Fréquence", fill = "Âges des jurys") +
+  theme_minimal() +
+  scale_fill_manual(values = c("#FFDAB9", "#C8A2C8"))  # 색상 지정
+
+# 평균 값 텍스트를 추가할 위치를 지정합니다
+mean_text_position_hist <- mean_values %>%
+  mutate(mean_position = ifelse(cohort3 == "Avant 2000", 
+                                max(combined_info$âge) * 0.05,  # Avant 2000 평균값 위치 (왼쪽)
+                                max(combined_info$âge) * 0.95)) # Après 2000 평균값 위치 (오른쪽)
+
+# 히스토그램에 평균 값 텍스트 추가
+histogram_plot <- histogram_plot +
+  geom_text(data = mean_text_position_hist, aes(label = round(mean_age, 1),
+                                                x = mean_position, y = 10, color = cohort3),
+            size = 4, 
+            hjust = ifelse(mean_text_position_hist$cohort3 == "Avant 2000", 0, 1),  # 왼쪽으로 정렬
+            vjust = -0.5) +
+  scale_color_manual(name = "Âge moyen", values = c("#FF8200", "#B96FB9"))  # 범례 제목과 색상 지정
+
+
+# 상자 수염 그림
+combined_info$cohort3 <- factor(combined_info$cohort3, levels = c("Avant 2000", "Après 2000"))
+
+boxplot_plot <- ggplot(combined_info, aes(x = cohort3, y = âge, fill = cohort3)) +
+  geom_boxplot(alpha = 0.5) +
+  labs(title = "", x = "Cohort", y = "Âge", fill = "Âges des jurys") +
+  theme_minimal() +
+  scale_fill_manual(values = c("#C8A2C8", "#FFDAB9"))  # 색상 지정
+
+# 평균 값 텍스트를 추가할 위치를 지정합니다
+mean_text_position_box <- combined_info %>%
+  group_by(cohort3) %>%
+  summarise(mean_position = mean(âge, na.rm = TRUE))  # 박스 플롯에서 평균 값 텍스트가 표시될 위치 (평균값)
+
+# 상자 수염 그림에 평균 값 텍스트 추가
+boxplot_plot <- boxplot_plot +
+  geom_text(data = mean_text_position_box, aes(label = round(mean_position, 1),
+                                               x = as.numeric(factor(cohort3)),
+                                               y = mean_position),
+            size = 4, hjust = 0.5, vjust = -0.5, color = "black")
+
+# 두 개의 플롯을 나란히 출력
+grid.arrange(histogram_plot, boxplot_plot, ncol = 2,
+             top = "Âges des jurys avant et après 2000")
+
+
+```
+
+2000년 전후로 심사위원의 나이 분포를 박스플롯으로 분석한 결과, <span style="background-color:#fff5b1">**다양한 나이대의 심사위원으로 구성**</span>되면서 여러 나이대가 혼합되어 실제로 <span style="background-color:#fff5b1">**평균이 조금 낮아진 모습**</span>을 확인할 수 있다.
+
+------------------------------------------------------------------------
+
+## 수상 감독 국적의 변화 및 다양화
+
+프랑스는 1946년 이래로 쭉 자유무역의 원칙 하에 미국 영화를 수용하며 <span style="color:blue">미국 영화의 범람으로부터 자국 영화를 보존하기 위해 노력</span>해왔고, 1999년 <span style="color:blue">**‘문화다양성’**</span>을 내세우며 그 결실을 이뤄냈다.
+
+### 2000년 전후 수상 감독 국적 변화 (미국, 프랑스)
+
+수상작 감독의 국적 2000년 기준 문화 다양성과 관련한 변화가  유의미한 국가들만 코호트 집단으로 시각화한 그래프이다.
+
+```{r Figure 15, eval=T, echo=T, message=F, results = 'hide'}
+
+# 데이터 프레임 생성하기
+nationalitédesréalisateurs <- as.data.frame(palmedor)
+
+# 연도와 국적 데이터 추출
+nationalitédesréalisateurs <- nationalitédesréalisateurs %>%
+  select(Année, `nationalité`)
+
+# 연도를 2000년 전과 후로 나누기
+nationalitédesréalisateurs <- nationalitédesréalisateurs %>%
+  mutate(cohort = ifelse(Année < 2000, "avant 2000", "après 2000"))
+
+# 미국과 프랑스를 제외한 모든 국가를 'autre'로 변환
+nationalitédesréalisateurs <- nationalitédesréalisateurs %>%
+  mutate(nationalité = ifelse(nationalité %in% c("Etats-Unis", "France"), nationalité, "autre"))
+
+# 'autre'를 제외한 국적별 빈도수 계산
+nationality_counts <- nationalitédesréalisateurs %>%
+  filter(nationalité %in% c("Etats-Unis", "France")) %>%
+  group_by(cohort, `nationalité`) %>%
+  summarise(count = n(), .groups = "drop") %>%
+  arrange(cohort, desc(count))
+
+# 누락된 값 추가
+nationality_counts <- nationality_counts %>%
+  complete(cohort, nesting(`nationalité`), fill = list(count = 0))
+
+# avant 2000과 après 2000을 factor로 변환하여 순서 변경
+nationality_counts$cohort <- factor(nationality_counts$cohort, levels = c("avant 2000", "après 2000"))
+
+# 시각화
+ggplot(nationality_counts, aes(x = `nationalité`, y = count, fill = cohort)) +
+  geom_bar(stat = "identity", position = "dodge", color = "gray20", linewidth = 0.3) +  # 테두리 추가 및 굵기 조절
+  geom_text(aes(label = count), position = position_dodge(width = 0.9), vjust = -0.5, color = "black",size=3) +  # 빈도수 텍스트 추가
+  labs(title = "Fréquence de la nationalité des réalisateurs avant et après 2000",
+       x = "Nationalité",
+       y = "Fréquence") +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1),  # x축 텍스트 설정
+        plot.title = element_text(size = 10)) +  # 제목 크기 설정
+  scale_fill_manual(values = c("avant 2000" = "#FFD1DC", "après 2000" = "#D2E8B0"))  # 색상 설정
+
+
+```
+
+실제로<span style="background-color:#fff5b1"> **2000년 이후로 미국 감독의 수상이 급락하고 프랑스 감독에게 더 상을 많이 주는 경향**</span>을 그 빈도수로서 확인할 수 있다.
+
+------------------------------------------------------------------------
+
+# **시놉시스 작성 및 예측 결과**
+
+## 시놉시스 작성
+
+2023년 10월 여론 조사에서, 프랑스인의 83%가 <span style="color:blue">**가족**</span>과 <span style="color:blue">**친구**</span>가 인생에서 가장 중요한 것으로 답했다. 프랑스인의 특성상 다양한 형태의 삶을 담을 수 있는 인생과 가족 관련 주제를 꾸준히 선호함을 알 수 있다.
+
+[시놉시스 빈도수 그래프]{style="font-size: 20px;"}
+
+```{r Figure 17, eval=T, echo=T, message=F, results = 'hide'}
+
+palmedor <- read_excel("palmedorfinal.xlsx")
+
+# 데이터 전치 및 연도 그룹 나누기
+palmedor_transposed <- palmedor %>%
+  pivot_longer(cols = starts_with("Synopsis"), names_to = "Year", values_to = "Synopsis") %>%
+  mutate(Year = as.numeric(Année)) %>%
+  select(Year, Synopsis)
+
+# 연도를 5년 단위로 묶기 (1973년부터 시작, 마지막 그룹을 2018-2023으로 설정)
+palmedorfinal_transposed <- palmedor_transposed %>%
+  mutate(Group1 = ifelse(Year >= 2018, max((Year - 1973) %/% 5), (Year - 1973) %/% 5))
+
+# 연도별 전체 언급 횟수 계산
+total_mentions <- palmedorfinal_transposed %>%
+  group_by(Group1) %>%
+  summarise(Total_Mentions = sum(str_count(Synopsis, regex("\\b\\w+\\b", ignore_case = TRUE))))
+
+# 'vie' 단어의 언급 횟수 계산
+vie_mentions <- palmedorfinal_transposed %>%
+  group_by(Group1) %>%
+  summarise(Vie_Mentions = sum(str_count(Synopsis, regex("\\bvie\\b", ignore_case = TRUE))))
+
+# 'guerre' 단어의 언급 횟수 계산
+guerre_mentions <- palmedorfinal_transposed %>%
+  group_by(Group1) %>%
+  summarise(Guerre_Mentions = sum(str_count(Synopsis, regex("\\bguerre\\b", ignore_case = TRUE))))
+
+# 'famille' 단어의 언급 횟수 계산
+famille_mentions <- palmedorfinal_transposed %>%
+  group_by(Group1) %>%
+  summarise(Famille_Mentions = sum(str_count(Synopsis, regex("\\bfamille\\b", ignore_case = TRUE))))
+
+# 특정 연도 범위 필터링 함수
+filter_year_range <- function(df, start_year, end_year) {
+  df %>%
+    filter(Year >= start_year & Year <= end_year)
+}
+
+# 특정 연도 범위에서 단어 빈도 계산 함수
+calculate_word_mentions <- function(df, word) {
+  sum(str_count(df$Synopsis, regex(paste0("\\b", word, "\\b"), ignore_case = TRUE)))
+}
+
+# 데이터를 합치고 백분율 계산
+combined_mentions <- total_mentions %>%
+  left_join(vie_mentions, by = "Group1") %>%
+  left_join(guerre_mentions, by = "Group1") %>%
+  left_join(famille_mentions, by = "Group1") %>%
+  mutate(
+    Vie_Percentage = (Vie_Mentions / Total_Mentions) * 100,
+    Guerre_Percentage = (Guerre_Mentions / Total_Mentions) * 100,
+    Famille_Percentage = (Famille_Mentions / Total_Mentions) * 100,
+    Year = ifelse(Group1 == max(Group1), "2018-2023", paste0(1973 + (Group1 * 5), "-", 1973 + (Group1 * 5) + 4))
+  )
+
+# 그래프 그리기
+ggplot(combined_mentions, aes(x = Year)) +
+  geom_line(aes(y = Vie_Percentage, color = "Vie", group = 1), linewidth = 1) +
+  geom_point(aes(y = Vie_Percentage, color = "Vie"), size = 1) +
+  geom_line(aes(y = Guerre_Percentage, color = "Guerre", group = 2), linewidth = 1) +
+  geom_point(aes(y = Guerre_Percentage, color = "Guerre"), size = 2) +
+  geom_line(aes(y = Famille_Percentage, color = "Famille", group = 3), linewidth = 1) +
+  geom_point(aes(y = Famille_Percentage, color = "Famille"), size = 3) +
+  scale_color_manual(
+    name = "Mots fréquents",
+    values = c("Vie" = "blue", "Guerre" = "red", "Famille" = "green")
+  ) +
+  labs(title = "Fréquence des mots - 'Vie', 'Guerre', 'Famille'", x = "Année", y = "Pourcentage") +
+  theme_bw() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1, size = 10),
+    plot.title = element_text(size = 15, face = "bold"),
+    axis.title = element_text(size = 12),
+    legend.title = element_text(size = 12),
+    legend.text = element_text(size = 10)
+  )
+```
+
+코호트 집단으로 분류해 보았을 때 <span style="background-color:#fff5b1">가족 관련 주제</span>에 조금 더 관심을 가지고, <span style="background-color:#fff5b1">인생 관련 주제</span> 또한 여전히 높게 사는 것이 보인다.
+
+지금까지 분석해낸 사회의 다양화라는 흐름과 위에서 본 빈출 단어를
+기반으로 수상 가능성 있는 시놉시스 20가지, 그렇지 않은 시놉시스 10가지를
+프랑스어로 작성했다.
+
+📌 *시놉시스 전문을 보시려면 palmedorfinal.zip파일의 notresynop.txt
+파일을 확인하세요.*
+
+------------------------------------------------------------------------
+
+그 후, **LLM(거대언어모델) 3가지(Chat gpt, Gemini, Copilot)**에 수상 확률 예측을 부탁했다.
+
+## 시놉시스 예측 결과
+
+```{r png gemini, include=TRUE}
+knitr::opts_chunk$set(echo = TRUE)
+
+# 이미지 파일 경로를 벡터로 만듭니다.
+resultats <- c("resultat1.png", "resultat2.png", "resultat3.png")
+
+# 이미지를 포함합니다.
+knitr::include_graphics(resultats)
+
+```
+
+<span style="background-color:#FFE6E6">Gemini는 **다양성과 포용성, 정체성과 자아 발견 탐구, 로드 트립 서사, LGBTQ+ 표현, 그리고 감정적 깊이와 공감할 수 있는 캐릭터**라는 테마로 칸 영화제의 방향성에 가장 부합하는 시놉시스인 22번을 기대 수상작으로 뽑았다.</span>
+
+22. Deux femmes, troublées par l'approche de leur remise de diplômes
+    universitaires, décident de partir en voyage pour apaiser leur
+    esprit. L'une étudie la psychologie et l'autre aspire à devenir
+    écrivaine. Pour aider Élise à écrire le scénario d'un film de route,
+    deux personnes voyagent successivement dans les États-Unis: Oregon,
+    Arizona, Colorado, Wyoming. Arrivée au Wyoming, Élise avoue à Léa
+    qu'elle l'aime. Léa est surprise et plonge dans une profonde
+    réflexion.
+
+---
+
+```{r png chatgpt, include=TRUE}
+knitr::opts_chunk$set(echo = TRUE)
+
+# 이미지 파일 경로를 벡터로 만듭니다.
+resultats <- c("resultat4.png")
+
+# 이미지를 포함합니다.
+knitr::include_graphics(resultats)
+
+```
+
+<span style="background-color:#FFE6E6">Chat GPT는 **여성 중심 서사, 다양성과 포용성, 감정적 깊이와 치유, 사회적 메세지**의 차원에서 1번 시놉시스를 선택했다.</span>
+
+1.  La femme 1, qui a perdu sa famille, la femme 2, qui est veuve, et la
+    femme 3, qui est orpheline de naissance, ont des définitions
+    différentes de la famille. La douleur, la nostalgie et la solitude.
+    Ensemble, les trois femmes tentent de transformer leurs définitions
+    de la famille en quelque chose de positif.
+
+---
+
+```{r png claude, include=TRUE}
+knitr::opts_chunk$set(echo = TRUE)
+
+# 이미지 파일 경로를 벡터로 만듭니다.
+resultats <- c("resultat5.png")
+
+# 이미지를 포함합니다.
+knitr::include_graphics(resultats)
+
+```
+
+<span style="background-color:#FFE6E6">Claude는 10번 시놉시스가 **퀴어, 여성주의, 다양성 존중** 등의 가치를 담고 있다고 판단하여 수상 가능성이 높다고 이야기했다.</span>
+
+10. Sol. une étudiante coréenne, rencontre Soomi. Elle est étudiante
+    aussi. Sol n’était pas la homosexuelle, mais la rencontre avec soomi
+    lui a réalisé qu’elle peut tomber amoureuse avec la femme aussi.
+    Elle a envie d’elle. Mais, vivre en tant qu’homosexuelle ou
+    bisexuelle en Corée est très difficile. Sa famille lui dédaignera.
+    Et si Soomi n’est pas homosexuelle ou bisexuelle, elle peut-être le
+    dédaignera aussi. Sol a peur de ça ce passe. Mais, elle lui demande
+    à la folie.
+
+---
+
+이 중 **시놉시스의 플롯의 구체성과 캐릭터의 깊이, 그리고 테마의 다양성**을 고려해 22번 시놉시스를 최종 수상 예상작으로 결정했고 AI를 통해 포스터를 제작했다.
+
+## 🎬 LLM이 뽑은 시놉시스의 AI 포스터 공개
+
+```{r poster, include=TRUE}
+knitr::opts_chunk$set(echo = TRUE)
+
+# 이미지 파일 경로를 벡터로 만듭니다.
+poster <- c("poster.png")
+
+# 이미지를 포함합니다.
+knitr::include_graphics(poster)
+
+
+
+
+```
+
+------------------------------------------------------------------------
+
+# **결론 및 시사점** {style="font-size: 17px;"}
+
+본 과제에서 질적 조사와 데이터 분석의 접목을 통해 2000년을 기준으로 코호트 집단을 비교분석한 결과 사회는 다양성을 중시하는 방향으로 발전하고 있음을 포착했다.
+
+첫 번째, 영화제에서의 여성 비율(심사위원, 수상 감독)의 증가.
+
+두 번째, 수상 감독의 평균 나이의 증가.
+
+세 번째, 황금종려상 수상작 장르의 다양성 추구 (퀴어 종려상 신설 등).
+
+네 번째, 심사위원 구성(직업, 나이)의 다양성 확보.
+
+다섯 번째, 수상 감독의 국적으로 본 문화 다양성을 위한 노력 (미국의 감소,
+프랑스의 증가).
+
+인문학적 사고에 기반한 데이터 분석 방법을 통해 <span style="background-color:#DCFFE4">사회의 가치를 발견하는 능력</span>에 더하여 <span style="background-color:#DCFFE4">시대의 흐름에 관한 통찰력</span>까지 얻을 수 있었다. 힘 있는 다수의 범람으로부터 소수를 보존하려는 움직임과 같은 <span style="background-color:#DCFFE4">전반적인 영화제의 흐름 뿐만 아니라 사회의 다양화 지점을 파악</span>했다. 다양성의 확보에 따라 점차 직업, 나이, 사랑의 형태 등이 넓은 폭으로 존중받기 시작했다는 것을 깨달았다.
+
+이전에는 80이면 장수한 것이었다. 그러나 비로소 백세시대에 접어든 지금, 사람들은 노인혐오를 거두고 나이를 경력으로서 존중한다. 여성의 권리라는 개념조차 존재하지 않던 18세기와는 달리 현재 여성은 독립적으로 자신의 삶을 꾸려가는 주체로서 인정받는다. 사람이 같은 사람을 사랑하는 것이 죄가 되던 시대는 지났고, 모든 사랑의 형태는 곳곳에서 법적으로까지 허용되는 세상이 왔다.
+
+위 같은 현상을 데이터가 가진 지표로 보여줌으로써 칸 영화제가 사회의
+흐름을 예민하게 반영하고 있음을 확인했다. 황금종려상 수상작에 담긴
+사회의 모습과 그 변화를 보았고, <span style="background-color:#fff5b1">사람들이 추구하는 가치가 점차 섬세해짐을 발견했다.</span> 사람들의 마음이 점차 개방적인 쪽으로 나아가고 있다는 점과 발 빠르게 변화하는 사회 속에서 <span style="background-color:#fff5b1">자신의 세상만 중요하게 여기지 않고 다양한 형태의 삶을 포용하려는 자세</span>를 배울 수 있었다. <span style="background-color:#fff5b1">이제 우리 자신에게 질문을 던질 차례이다. 이러한 세상에서 우리는 어떤 쪽으로 변화해야 할까?</span> 이 프로젝트를 시작으로 인문, 예술
+분야에서 이와 같은 데이터 기반 연구방법론이 더욱 다양하게 시도될 것을
+기대한다. 
